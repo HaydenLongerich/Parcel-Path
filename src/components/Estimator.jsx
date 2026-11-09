@@ -11,7 +11,7 @@ function routeSummary(route) {
   return names.join(' → ');
 }
 
-export default function Estimator({ theme }) {
+export default function Estimator() {
   const [form, setForm] = useState({ from: '', to: '', weightKg: '1' });
   const [result, setResult] = useState(null);
   const [selectedCode, setSelectedCode] = useState(null);
@@ -103,7 +103,7 @@ export default function Estimator({ theme }) {
               ))}
             </ul>
             <div className="map-panel glass">
-              <RouteMap view={mapView} selection={null} theme={theme} onSelectPlace={() => {}} />
+              <RouteMap view={mapView} selection={null} onSelectPlace={() => {}} />
               <div className="map-foot">
                 <ul className="key" aria-label="Map key">
                   <li><span className="swatch swatch-dashed" />Road</li>

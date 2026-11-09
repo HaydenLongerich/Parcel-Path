@@ -37,11 +37,11 @@ npm run setup:browser
 | `npm run update:facilities` | Refreshes the FSA table from Canada Post |
 | `npm run check:api` | Tests your API key and real tracking numbers |
 
-The app opens on a stored sample parcel (Twillingate, NL to Windsor, ON), and **Show the demo parcel** returns to it. The sample contacts nothing at Canada Post.
+The app opens empty until you enter a tracking number. **Show the demo parcel** loads a stored sample (Twillingate, NL to Windsor, ON), which contacts nothing at Canada Post.
 
 ### Map
 
-The basemap is [OpenFreeMap](https://openfreemap.org)'s minimal vector style, which needs no key. If you have a free [CARTO key](https://carto.com/basemaps/apikey), add `VITE_CARTO_KEY=your_key_here` to `.env.local` and restart to use CARTO instead. OpenStreetMap raster tiles are only a fallback for browsers without WebGL, because they draw forest cover as blocky patches across northern Canada.
+The map uses [Esri World Imagery](https://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9) satellite tiles with Esri's place labels, which need no key. The credit shown on the map has to stay there. Check [Esri's terms](https://www.esri.com/en-us/legal/terms/full-master-agreement) before using this in a commercial product.
 
 ## Features that use your API key
 

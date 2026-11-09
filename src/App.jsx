@@ -95,8 +95,7 @@ export default function App() {
 
   useEffect(() => {
     if (initial.pin) track(initial);
-    else showDemo();
-  }, [initial, showDemo, track]);
+  }, [initial, track]);
 
   useEffect(() => {
     fetchNotices().then(setNotices).catch(() => {});
@@ -124,7 +123,7 @@ export default function App() {
           <span>Parcel Path</span>
         </a>
         <nav aria-label="Main">
-          <a href="#tracker">Tracker</a>
+          <a href={view || error || loading ? '#tracker' : '#top'}>Tracker</a>
           <a href="#estimate">Estimate</a>
           <a href="#faq" className="nav-wide">FAQ</a>
           <button
@@ -157,7 +156,7 @@ export default function App() {
           />
         </section>
 
-        <Reveal as="section" className="stage" id="tracker" aria-label="Tracker">
+        {(view || error || loading) && <Reveal as="section" className="stage" id="tracker" aria-label="Tracker">
           {banner && <div className="note glass note-warn" role="alert">{banner}</div>}
 
           {loading && (
@@ -190,7 +189,7 @@ export default function App() {
                 {view.pickup && <PickupCard office={view.pickup} />}
               </div>
               <div className="map-panel glass">
-                <RouteMap view={view} selection={selection} theme={theme} onSelectPlace={selectPlace} />
+                <RouteMap view={view} selection={selection} onSelectPlace={selectPlace} />
                 <MapKey view={view} />
               </div>
               <Timeline view={view} selection={selection} onSelectEvent={selectEvent} />
@@ -201,17 +200,17 @@ export default function App() {
               )}
             </div>
           )}
-        </Reveal>
+        </Reveal>}
 
         {view && <Stats stats={view.stats} />}
-        <Estimator theme={theme} />
+        <Estimator />
         <Faq />
         <TestBench />
       </main>
 
       <footer className="footer">
         <span>Parcel Path is an independent project, not affiliated with Canada Post.</span>
-        <span><a href="#test">Test bench</a> · Map data © OpenStreetMap contributors · Geocoding by Nominatim</span>
+        <span><a href="#test">Test bench</a> · Imagery by Esri · Route data © OpenStreetMap contributors · Geocoding by Nominatim</span>
       </footer>
     </>
   );

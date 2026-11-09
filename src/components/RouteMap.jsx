@@ -1,7 +1,5 @@
 import { useEffect, useRef } from 'react';
 import L from 'leaflet';
-import 'maplibre-gl/dist/maplibre-gl.css';
-import '@maplibre/maplibre-gl-leaflet';
 import { prefersReducedMotion } from '../useTheme.js';
 import { BOAT_ICON_SVG, PLANE_ICON_SVG } from './Icons.jsx';
 
@@ -9,38 +7,30 @@ const CANADA_BOUNDS = [[42, -141], [70, -52]];
 const SELECT_ZOOM = 9;
 const DRAW_MS = 1800;
 
-const CARTO_KEY = import.meta.env.VITE_CARTO_KEY;
-const OSM_CREDIT = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
-const ROUTING_CREDIT = 'Routes: <a href="https://project-osrm.org">OSRM</a>';
-const OPENFREEMAP_CREDIT = `<a href="https://openfreemap.org">OpenFreeMap</a> &copy; <a href="https://www.openmaptiles.org/">OpenMapTiles</a> ${OSM_CREDIT}`;
+const WORLD_BOUNDS = [[-85.06, -180], [85.06, 180]];
+const TILE_SIZE = 256;
+const MAX_ZOOM = 18;
 
-const supportsWebGl = () => Boolean(document.createElement('canvas').getContext('webgl2'));
+const ESRI_TILES = 'https://server.arcgisonline.com/ArcGIS/rest/services';
+const CREDIT = [
+  'Imagery: Esri, Vantor, Earthstar Geographics, and the GIS User Community',
+  'Routes: <a href="https://project-osrm.org">OSRM</a>, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+].join(' | ');
 
-/**
- * OpenFreeMap's minimal vector style needs no key. Raster OpenStreetMap tiles draw
- * forest cover as blocky patches across northern Canada, so they are only a last resort.
- */
-function createBasemap(theme) {
-  if (CARTO_KEY) {
-    const style = theme === 'dark' ? 'dark_all' : 'light_all';
-    return L.tileLayer(`https://basemaps.cartocdn.com/rastertiles/${style}/{z}/{x}/{y}{r}.png?key=${encodeURIComponent(CARTO_KEY)}`, {
-      maxZoom: 19,
-      attribution: `${OSM_CREDIT} &copy; <a href="https://carto.com/attributions">CARTO</a>`,
-    });
-  }
-  if (supportsWebGl()) {
-    return L.maplibreGL({
-      style: `https://tiles.openfreemap.org/styles/${theme === 'dark' ? 'dark' : 'positron'}`,
-      attribution: `${OPENFREEMAP_CREDIT} | ${ROUTING_CREDIT}`,
-    });
-  }
-  return L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: OSM_CREDIT, className: 'tiles-restyled' });
+function addSatelliteLayers(map) {
+  const shared = { noWrap: true, bounds: WORLD_BOUNDS, maxZoom: MAX_ZOOM };
+  L.tileLayer(`${ESRI_TILES}/World_Imagery/MapServer/tile/{z}/{y}/{x}`, { ...shared, attribution: CREDIT }).addTo(map);
+  L.tileLayer(`${ESRI_TILES}/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}`, shared).addTo(map);
 }
 
-const COLORS = {
-  light: { route: '#D52B1E', selected: '#A31E14', predicted: '#1F3A5F', surface: '#FFFFFF' },
-  dark: { route: '#D52B1E', selected: '#FF6A5E', predicted: '#9DBCE3', surface: '#1C1F24' },
-};
+/** Stops zooming out once the single world would no longer fill the map. */
+function limitZoomOut(map) {
+  const { x, y } = map.getSize();
+  if (x > 0 && y > 0) map.setMinZoom(Math.ceil(Math.log2(Math.max(x, y) / TILE_SIZE)));
+}
+
+// Satellite imagery is dark in both themes, so the line colours don't change with the theme.
+const COLORS = { route: '#FF3B30', selected: '#FF8A80', predicted: '#E3EEFF', surface: '#14181F' };
 
 const escapeHtml = (text) =>
   String(text).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -89,7 +79,7 @@ function drawProgressively(paths, onDone) {
   return () => cancelAnimationFrame(frame);
 }
 
-function placeMarker(place, selected, colors) {
+function placeMarker(place, selected) {
   if (place.isCurrent) {
     return L.marker(toLatLng(place), {
       icon: L.divIcon({
@@ -106,9 +96,9 @@ function placeMarker(place, selected, colors) {
   }
   return L.circleMarker(toLatLng(place), {
     radius: selected ? 8 : 5.5,
-    color: colors.surface,
+    color: COLORS.surface,
     weight: 2,
-    fillColor: selected ? colors.selected : colors.route,
+    fillColor: selected ? COLORS.selected : COLORS.route,
     fillOpacity: 1,
   });
 }
@@ -120,10 +110,9 @@ function popupHtml(place) {
   return `<strong>${escapeHtml(place.label)}</strong>${facility}<em>${place.isCurrent ? 'Current location · ' : ''}${count} scan${count === 1 ? '' : 's'}</em>`;
 }
 
-export default function RouteMap({ view, selection, theme, onSelectPlace }) {
+export default function RouteMap({ view, selection, onSelectPlace }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
-  const tilesRef = useRef(null);
   const routeLayerRef = useRef(null);
   const markerLayerRef = useRef(null);
   const drawnViewRef = useRef(null);
@@ -131,13 +120,19 @@ export default function RouteMap({ view, selection, theme, onSelectPlace }) {
   onSelectRef.current = onSelectPlace;
 
   useEffect(() => {
-    const map = L.map(containerRef.current, { scrollWheelZoom: false }).fitBounds(CANADA_BOUNDS, { animate: false });
+    const map = L.map(containerRef.current, { scrollWheelZoom: false, maxBounds: WORLD_BOUNDS, maxBoundsViscosity: 1 });
+    limitZoomOut(map);
+    map.fitBounds(CANADA_BOUNDS, { animate: false });
+    addSatelliteLayers(map);
     map.on('focus', () => map.scrollWheelZoom.enable());
     map.on('blur', () => map.scrollWheelZoom.disable());
     mapRef.current = map;
     routeLayerRef.current = L.layerGroup().addTo(map);
     markerLayerRef.current = L.layerGroup().addTo(map);
-    const observer = new ResizeObserver(() => map.invalidateSize());
+    const observer = new ResizeObserver(() => {
+      map.invalidateSize();
+      limitZoomOut(map);
+    });
     observer.observe(containerRef.current);
     return () => {
       observer.disconnect();
@@ -146,22 +141,16 @@ export default function RouteMap({ view, selection, theme, onSelectPlace }) {
     };
   }, []);
 
-  useEffect(() => {
-    tilesRef.current?.remove();
-    tilesRef.current = createBasemap(theme).addTo(mapRef.current);
-  }, [theme]);
-
-  // Route lines. Only a newly loaded parcel animates, not a theme change.
+  // Route lines. Only a newly loaded parcel animates.
   useEffect(() => {
     const layer = routeLayerRef.current;
-    const colors = COLORS[theme];
     layer.clearLayers();
     const paths = [];
 
     const travelled = view.travelledPath ?? view.travelled;
     if (travelled.length > 1) {
       const coords = travelled.map(toLatLng);
-      paths.push({ coords, line: L.polyline(coords, { color: colors.route, weight: 3.5, lineJoin: 'round', lineCap: 'round' }).addTo(layer) });
+      paths.push({ coords, line: L.polyline(coords, { color: COLORS.route, weight: 3.5, lineJoin: 'round', lineCap: 'round' }).addTo(layer) });
     }
 
     for (const segment of view.predicted?.segments ?? []) {
@@ -169,7 +158,7 @@ export default function RouteMap({ view, selection, theme, onSelectPlace }) {
       const ferry = segment.mode === 'ferry';
       const air = segment.mode === 'air';
       const line = L.polyline(coords, {
-        color: colors.predicted,
+        color: COLORS.predicted,
         weight: ferry ? 3 : 2.5,
         dashArray: ferry ? '0.5 8' : air ? '16 9' : '8 8',
         lineCap: ferry ? 'round' : 'butt',
@@ -200,20 +189,19 @@ export default function RouteMap({ view, selection, theme, onSelectPlace }) {
       cancel();
       if (!finished) drawnViewRef.current = null;
     };
-  }, [view, theme]);
+  }, [view]);
 
   // Markers restyle on selection without restarting the line animation.
   useEffect(() => {
     const layer = markerLayerRef.current;
-    const colors = COLORS[theme];
     layer.clearLayers();
 
     for (const stop of view.predicted?.stops ?? []) {
       L.circleMarker(toLatLng(stop), {
         radius: stop.type === 'facility' ? 5 : 3,
-        color: colors.predicted,
+        color: COLORS.predicted,
         weight: 2,
-        fillColor: colors.surface,
+        fillColor: COLORS.surface,
         fillOpacity: 1,
       })
         .bindTooltip(`${escapeHtml(stop.name)} (${stop.type === 'facility' ? 'predicted stop' : 'ferry terminal'})`, { className: 'glass-tooltip' })
@@ -221,18 +209,18 @@ export default function RouteMap({ view, selection, theme, onSelectPlace }) {
     }
 
     if (view.destinationPoint && view.predicted) {
-      L.circleMarker(toLatLng(view.destinationPoint), { radius: 8, color: colors.predicted, weight: 2.5, fillColor: colors.surface, fillOpacity: 1 })
+      L.circleMarker(toLatLng(view.destinationPoint), { radius: 8, color: COLORS.predicted, weight: 2.5, fillColor: COLORS.surface, fillOpacity: 1 })
         .bindTooltip(`Destination: ${escapeHtml(view.destinationPoint.label)}`, { className: 'glass-tooltip' })
         .addTo(layer);
     }
 
     for (const place of view.places) {
       const selected = selection?.placeId === place.id;
-      const marker = placeMarker(place, selected, colors).bindPopup(popupHtml(place), { className: 'glass-popup' }).addTo(layer);
+      const marker = placeMarker(place, selected).bindPopup(popupHtml(place), { className: 'glass-popup' }).addTo(layer);
       marker.on('click', () => onSelectRef.current(place.id));
       if (selected) marker.openPopup();
     }
-  }, [view, selection, theme]);
+  }, [view, selection]);
 
   // Fit the whole trip when a new parcel loads.
   useEffect(() => {

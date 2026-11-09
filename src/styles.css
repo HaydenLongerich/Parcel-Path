@@ -411,8 +411,6 @@ kbd {
   z-index: 0;
 }
 :root[data-theme='dark'] .map { background: #1b1d22; }
-.tiles-restyled { filter: grayscale(1) brightness(1.14) contrast(0.68) opacity(0.46); }
-:root[data-theme='dark'] .tiles-restyled { filter: grayscale(1) invert(1) brightness(0.72) contrast(0.85) opacity(0.62); }
 .map-foot { padding: 12px 12px 8px; display: flex; flex-direction: column; gap: 6px; }
 .key { list-style: none; display: flex; gap: 6px 18px; flex-wrap: wrap; font-size: 0.82rem; font-weight: 500; letter-spacing: -0.005em; }
 .key li { display: flex; align-items: center; gap: 7px; }
