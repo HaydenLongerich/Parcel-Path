@@ -1,0 +1,44 @@
+{
+  "notes": "Simplified long-haul parcel network. Edges are undirected; km are approximate road distances. Real routing varies. Waypoints are route points that are not processing facilities, so they do not count as stops.",
+  "airHubs": ["stj", "hfx", "mct", "mtl", "tor", "wpg", "cal", "edm", "van"],
+  "waypoints": [
+    { "id": "pab", "name": "Port aux Basques", "lat": 47.573, "lon": -59.136, "landmass": "newfoundland" },
+    { "id": "nsy", "name": "North Sydney", "lat": 46.2062, "lon": -60.253, "landmass": "mainland" }
+  ],
+  "edges": [
+    { "a": "stj", "b": "pab", "km": 905 },
+    { "a": "pab", "b": "nsy", "km": 180, "mode": "ferry", "label": "Port aux Basques ↔ North Sydney ferry" },
+    { "a": "nsy", "b": "hfx", "km": 410 },
+    { "a": "nsy", "b": "mct", "km": 510 },
+
+    { "a": "hfx", "b": "mct", "km": 260 },
+    { "a": "cha", "b": "mct", "km": 170 },
+    { "a": "sjb", "b": "mct", "km": 155 },
+    { "a": "fre", "b": "mct", "km": 180 },
+    { "a": "fre", "b": "sjb", "km": 110 },
+
+    { "a": "mct", "b": "mtl", "km": 1015 },
+    { "a": "mct", "b": "que", "km": 800 },
+    { "a": "que", "b": "mtl", "km": 255 },
+    { "a": "mtl", "b": "ott", "km": 200 },
+    { "a": "mtl", "b": "tor", "km": 540 },
+    { "a": "ott", "b": "tor", "km": 450 },
+
+    { "a": "tor", "b": "ham", "km": 70 },
+    { "a": "tor", "b": "kit", "km": 105 },
+    { "a": "tor", "b": "lon", "km": 175 },
+    { "a": "tor", "b": "win", "km": 355 },
+    { "a": "lon", "b": "win", "km": 190 },
+
+    { "a": "tor", "b": "wpg", "km": 2200 },
+    { "a": "wpg", "b": "reg", "km": 575 },
+    { "a": "wpg", "b": "sas", "km": 785 },
+    { "a": "reg", "b": "sas", "km": 260 },
+    { "a": "reg", "b": "cal", "km": 760 },
+    { "a": "sas", "b": "edm", "km": 525 },
+    { "a": "cal", "b": "edm", "km": 300 },
+    { "a": "cal", "b": "van", "km": 970 },
+    { "a": "edm", "b": "van", "km": 1160 },
+    { "a": "van", "b": "vic", "km": 115, "mode": "ferry", "label": "Tsawwassen ↔ Swartz Bay ferry" }
+  ]
+}

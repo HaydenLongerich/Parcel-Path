@@ -1,0 +1,17 @@
+{
+  "pin": "DEMO",
+  "service": "Expedited Parcel",
+  "status": "In transit",
+  "delivered": false,
+  "asOf": "2026-11-09",
+  "expectedDelivery": null,
+  "destination": { "city": "Windsor", "region": "ON", "postalCode": null },
+  "events": [
+    { "date": "2026-11-01", "time": null, "description": "Electronic information submitted by shipper", "city": "Twillingate", "region": "NL", "postalCode": "A0G 4M0", "country": "CA" },
+    { "date": "2026-11-02", "time": null, "description": "Item accepted at the Post Office", "city": "Twillingate", "region": "NL", "postalCode": null, "country": "CA" },
+    { "date": "2026-11-03", "time": null, "description": "Delivery may be delayed due to transportation delay", "city": null, "region": null, "postalCode": null, "country": null },
+    { "date": "2026-11-06", "time": null, "description": "Item processed and in transit", "city": "Dieppe", "region": "NB", "postalCode": "E1A 5V8", "country": "CA" },
+    { "date": "2026-11-08", "dateLabel": "Nov 8–9", "time": null, "description": "Item departed", "city": "Dieppe", "region": "NB", "postalCode": null, "country": "CA" },
+    { "date": "2026-11-09", "time": null, "description": "Item processed", "city": "Montréal", "region": "QC", "postalCode": "H4T 1T4", "country": "CA" }
+  ]
+}
