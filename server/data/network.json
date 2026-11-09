@@ -1,9 +1,22 @@
 {
   "notes": "Simplified long-haul parcel network. Edges are undirected; km are approximate road distances. Real routing varies. Waypoints are route points that are not processing facilities, so they do not count as stops.",
   "airHubs": ["stj", "hfx", "mct", "mtl", "tor", "wpg", "cal", "edm", "van"],
+  "airports": {
+    "stj": { "code": "YYT", "name": "St. John's International Airport", "lat": 47.6186, "lon": -52.7519 },
+    "hfx": { "code": "YHZ", "name": "Halifax Stanfield Airport", "lat": 44.8808, "lon": -63.5086 },
+    "mct": { "code": "YQM", "name": "Greater Moncton Airport", "lat": 46.1122, "lon": -64.6786 },
+    "mtl": { "code": "YUL", "name": "Montréal-Trudeau Airport", "lat": 45.4706, "lon": -73.7408 },
+    "tor": { "code": "YYZ", "name": "Toronto Pearson Airport", "lat": 43.6777, "lon": -79.6248 },
+    "wpg": { "code": "YWG", "name": "Winnipeg Airport", "lat": 49.91, "lon": -97.2399 },
+    "cal": { "code": "YYC", "name": "Calgary Airport", "lat": 51.1215, "lon": -114.0076 },
+    "edm": { "code": "YEG", "name": "Edmonton Airport", "lat": 53.3097, "lon": -113.5797 },
+    "van": { "code": "YVR", "name": "Vancouver Airport", "lat": 49.1947, "lon": -123.1792 }
+  },
   "waypoints": [
     { "id": "pab", "name": "Port aux Basques", "lat": 47.573, "lon": -59.136, "landmass": "newfoundland" },
-    { "id": "nsy", "name": "North Sydney", "lat": 46.2062, "lon": -60.253, "landmass": "mainland" }
+    { "id": "nsy", "name": "North Sydney", "lat": 46.2062, "lon": -60.253, "landmass": "mainland" },
+    { "id": "tsa", "name": "Tsawwassen", "lat": 49.0075, "lon": -123.1316, "landmass": "mainland" },
+    { "id": "swb", "name": "Swartz Bay", "lat": 48.689, "lon": -123.4108, "landmass": "vancouver-island" }
   ],
   "edges": [
     { "a": "stj", "b": "pab", "km": 905 },
@@ -39,6 +52,8 @@
     { "a": "cal", "b": "edm", "km": 300 },
     { "a": "cal", "b": "van", "km": 970 },
     { "a": "edm", "b": "van", "km": 1160 },
-    { "a": "van", "b": "vic", "km": 115, "mode": "ferry", "label": "Tsawwassen ↔ Swartz Bay ferry" }
+    { "a": "van", "b": "tsa", "km": 37 },
+    { "a": "tsa", "b": "swb", "km": 44, "mode": "ferry", "label": "Tsawwassen ↔ Swartz Bay ferry" },
+    { "a": "swb", "b": "vic", "km": 32 }
   ]
 }

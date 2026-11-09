@@ -3,6 +3,7 @@ import { lookupFsa, matchFacilityByName } from './route/facilities.js';
 import { distanceKm, nearestFacility, predictRoute } from './route/predict.js';
 
 const DAY_MS = 86_400_000;
+const NEARBY_TOWNS_KM = 300;
 const dayNumber = (iso) => Math.floor(Date.parse(`${iso.slice(0, 10)}T00:00:00Z`) / DAY_MS);
 
 function buildStats(record, route) {
@@ -69,7 +70,26 @@ async function resolveDestination(destination, geocode) {
   return { label, lat: point.lat, lon: point.lon, facilityIds: [nearest.id] };
 }
 
-export async function buildView(record, { geocode, destinationOverride = null }) {
+/** The line between two scans. It follows the network, except between nearby towns or outside Canada. */
+async function scanLeg(a, b, addRoads) {
+  const straight = [{ lat: a.lat, lon: a.lon }, { lat: b.lat, lon: b.lon }];
+  if (!a.inCanada || !b.inCanada) return straight;
+
+  const direct = !a.facilityId && !b.facilityId && distanceKm(a, b) < NEARBY_TOWNS_KM;
+  const targetId = b.facilityId ?? nearestFacility(b)?.id;
+  let leg = null;
+  if (direct) leg = { segments: [{ from: a.label, to: b.label, mode: 'road', coords: straight }] };
+  else if (targetId) {
+    leg = predictRoute({
+      from: { lat: a.lat, lon: a.lon, region: a.region, label: a.label, facilityId: a.facilityId },
+      destination: { lat: b.lat, lon: b.lon, label: b.label, facilityIds: [targetId] },
+    });
+  }
+  if (!leg) return straight;
+  return (await addRoads(leg)).segments.flatMap((segment) => segment.coords);
+}
+
+export async function buildView(record, { geocode, destinationOverride = null, addRoads = async (route) => route }) {
   const places = new Map();
   const route = [];
   const events = [];
@@ -131,12 +151,15 @@ export async function buildView(record, { geocode, destinationOverride = null })
   } else if (!current.inCanada) {
     routeNote = 'The last scan is outside Canada, so the Canadian network cannot predict the route yet.';
   } else {
-    predicted = predictRoute({
+    predicted = await addRoads(predictRoute({
       from: { lat: current.lat, lon: current.lon, region: current.region, label: current.label, facilityId: current.facilityId },
       destination,
-    });
+    }));
     if (!predicted) routeNote = 'The parcel is already at its destination area.';
   }
+
+  const travelledPath = [];
+  for (let i = 1; i < route.length; i++) travelledPath.push(...(await scanLeg(route[i - 1], route[i], addRoads)));
 
   const firstPlace = route[0] ?? null;
   return {
@@ -159,6 +182,7 @@ export async function buildView(record, { geocode, destinationOverride = null })
     events,
     places: mapped,
     travelled: route.map((place) => ({ lat: place.lat, lon: place.lon })),
+    travelledPath,
     destinationPoint: destination && !destination.unresolved ? { lat: destination.lat, lon: destination.lon, label: destination.label } : null,
     predicted,
     routeNote,

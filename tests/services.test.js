@@ -6,7 +6,9 @@ import { parseRates } from '../server/tracker/rating.js';
 import { parseOutages } from '../server/tracker/serviceInfo.js';
 import { buildEstimate, chooseRouteKind } from '../server/estimate.js';
 import { FACILITIES } from '../server/route/facilities.js';
-import { predictAirRoute } from '../server/route/predict.js';
+import { distanceKm, predictAirRoute, predictRoute } from '../server/route/predict.js';
+import { greatCirclePath, simplify, storedPath } from '../server/route/geometry.js';
+import { createRoadRouter } from '../server/route/roads.js';
 
 // Shapes taken from real responses for these services.
 const QUOTE = (code, name, due, days, guaranteed = false) => ({
@@ -140,7 +142,7 @@ describe('air routes', () => {
 
   it('flies between hubs', () => {
     const route = predictAirRoute({ from: at('mtl'), destination: to('van') });
-    expect(route.segments.map((s) => s.mode)).toEqual(['air']);
+    expect(route.segments.map((s) => s.mode)).toEqual(['road', 'air', 'road']);
     expect(route.stops.map((s) => s.id)).toEqual(['van']);
     expect(route.usesAir).toBe(true);
   });
@@ -155,6 +157,116 @@ describe('air routes', () => {
 
   it('has no air route when one hub serves both ends', () => {
     expect(predictAirRoute({ from: at('ham'), destination: to('kit') })).toBeNull();
+  });
+});
+
+describe('route shapes', () => {
+  const facility = (id) => FACILITIES.find((f) => f.id === id);
+  const at = (id) => ({ lat: facility(id).lat, lon: facility(id).lon, region: facility(id).province[0], label: facility(id).name, facilityId: id });
+  const to = (id) => ({ lat: facility(id).lat, lon: facility(id).lon, label: facility(id).name, facilityIds: [id] });
+
+  it('follows stored roads and ferry lanes, joined end to end', () => {
+    const route = predictRoute({ from: at('stj'), destination: to('hfx') });
+    expect(route.segments.every((s) => s.coords.length > 10)).toBe(true);
+    route.segments.slice(1).forEach((segment, i) => expect(segment.coords[0]).toEqual(route.segments[i].coords.at(-1)));
+    expect(route.segments[0].coords[0]).toEqual({ lat: facility('stj').lat, lon: facility('stj').lon });
+  });
+
+  it('reverses a stored path when travelling the other way', () => {
+    expect(storedPath('hfx', 'mct')).toEqual(storedPath('mct', 'hfx').reverse());
+    expect(storedPath('hfx', 'van')).toBeNull();
+  });
+
+  it('keeps the Toronto to Winnipeg road in Canada, through Thunder Bay', () => {
+    const path = storedPath('tor', 'wpg');
+    expect(Math.min(...path.map((p) => p.lat))).toBeGreaterThan(43.6);
+    expect(path.some((p) => Math.abs(p.lat - 48.4) < 0.1 && Math.abs(p.lon + 89.25) < 0.3)).toBe(true);
+  });
+
+  it('flies between airports along a great circle', () => {
+    const route = predictAirRoute({ from: at('mtl'), destination: to('van') });
+    const flight = route.segments.find((s) => s.mode === 'air');
+    expect(flight.coords[0]).toEqual({ lat: 45.4706, lon: -73.7408 });
+    expect(flight.coords.at(-1)).toEqual({ lat: 49.1947, lon: -123.1792 });
+    // The straight map line stays below 49.2; the great circle bends north of it.
+    expect(Math.max(...flight.coords.map((p) => p.lat))).toBeGreaterThan(50);
+    expect(flight.label).toContain('YUL → YVR');
+  });
+
+  it('makes a great circle as long as the distance between its ends', () => {
+    const a = { lat: 47.6, lon: -52.75 };
+    const b = { lat: 49.2, lon: -123.18 };
+    const path = greatCirclePath(a, b);
+    const length = path.slice(1).reduce((km, point, i) => km + distanceKm(path[i], point), 0);
+    expect(Math.abs(length - distanceKm(a, b))).toBeLessThan(1);
+  });
+
+  it('drops points that do not change the shape', () => {
+    expect(simplify([[0, 0], [0.00001, 1], [0, 2], [1, 3]], 0.001)).toEqual([[0, 0], [0, 2], [1, 3]]);
+  });
+});
+
+describe('road lookups', () => {
+  const a = { lat: 49.65, lon: -54.75 };
+  const b = { lat: 49.2, lon: -55 };
+  const route = (overrides = {}) => ({ code: 'Ok', waypoints: [{ distance: 10 }, { distance: 10 }], routes: [{ distance: 70_000, geometry: { coordinates: [[-54.75, 49.65], [-54.9, 49.4], [-55, 49.2]] } }], ...overrides });
+  const reply = (body) => async () => new Response(JSON.stringify(body));
+  const leg = { segments: [{ from: 'A', to: 'B', mode: 'road', coords: [a, b] }] };
+
+  it('replaces a straight leg with the road, keeping exact ends', async () => {
+    const { addRoadGeometry } = createRoadRouter({ fetchImpl: reply(route()), minGapMs: 0 });
+    const { segments } = await addRoadGeometry(leg);
+    expect(segments[0].coords.length).toBeGreaterThan(2);
+    expect(segments[0].coords[0]).toEqual(a);
+    expect(segments[0].coords.at(-1)).toEqual(b);
+  });
+
+  it('asks only once for the same leg', async () => {
+    let calls = 0;
+    const fetchImpl = async () => ((calls += 1), new Response(JSON.stringify(route())));
+    const { roadBetween } = createRoadRouter({ fetchImpl, minGapMs: 0 });
+    await roadBetween(a, b);
+    await roadBetween(a, b);
+    expect(calls).toBe(1);
+  });
+
+  it('leaves ferry, air and already detailed legs alone', async () => {
+    let calls = 0;
+    const fetchImpl = async () => ((calls += 1), new Response(JSON.stringify(route())));
+    const { addRoadGeometry } = createRoadRouter({ fetchImpl, minGapMs: 0 });
+    await addRoadGeometry({ segments: [{ mode: 'ferry', coords: [a, b] }, { mode: 'air', coords: [a, b] }, { mode: 'road', coords: [a, a, b] }] });
+    expect(calls).toBe(0);
+  });
+
+  it('keeps a straight line for a place with no road nearby', async () => {
+    const offRoad = route({ waypoints: [{ distance: 90_000 }, { distance: 10 }] });
+    const { addRoadGeometry } = createRoadRouter({ fetchImpl: reply(offRoad), minGapMs: 0 });
+    const { segments } = await addRoadGeometry(leg);
+    expect(segments[0]).toMatchObject({ coords: [a, b], noRoadData: true });
+  });
+
+  it('keeps a straight line for an absurd detour', async () => {
+    const detour = route({ routes: [{ distance: 900_000, geometry: { coordinates: [[-54.75, 49.65], [-55, 49.2]] } }] });
+    const { roadBetween } = createRoadRouter({ fetchImpl: reply(detour), minGapMs: 0 });
+    await expect(roadBetween(a, b)).resolves.toBeNull();
+  });
+
+  it('survives an outage, stops asking for a while, and does not remember the failure', async () => {
+    let calls = 0;
+    let clock = 0;
+    let working = false;
+    const fetchImpl = async () => {
+      calls += 1;
+      if (!working) throw new Error('offline');
+      return new Response(JSON.stringify(route()));
+    };
+    const { roadBetween } = createRoadRouter({ fetchImpl, minGapMs: 0, now: () => clock });
+    await expect(roadBetween(a, b)).resolves.toBeNull();
+    await expect(roadBetween(a, b)).resolves.toBeNull();
+    expect(calls).toBe(1);
+    clock = 120_000;
+    working = true;
+    await expect(roadBetween(a, b)).resolves.not.toBeNull();
   });
 });
 

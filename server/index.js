@@ -12,6 +12,7 @@ import { getOutages } from './tracker/serviceInfo.js';
 import { createTrackingCache } from './trackingCache.js';
 import { buildView, parseDestinationInput } from './buildView.js';
 import { buildEstimate } from './estimate.js';
+import { addRoadGeometry } from './route/roads.js';
 import { geocode as nominatimGeocode } from './geocoder.js';
 
 const PORT = Number(process.env.API_PORT ?? 3001);
@@ -46,7 +47,7 @@ async function geocode(query) {
   return nominatimGeocode(query);
 }
 
-const demoView = async () => ({ ...(await buildView(demoRecord, { geocode })), mode: 'demo', fetchedAt: null, nextRefreshAt: null });
+const demoView = async () => ({ ...(await buildView(demoRecord, { geocode, addRoads: addRoadGeometry })), mode: 'demo', fetchedAt: null, nextRefreshAt: null });
 
 function requirePin(raw) {
   const pin = sanitizePin(raw);
@@ -66,7 +67,7 @@ app.get('/api/track/:pin', async (req, res) => {
   const isTest = req.query.source === 'test';
   const destinationOverride = parseDestinationInput(req.query.dest);
   const { record, fetchedAt, nextFetchAt } = await (isTest ? getTestTracking : getTracking)(pin);
-  const view = await buildView(record, { geocode, destinationOverride });
+  const view = await buildView(record, { geocode, destinationOverride, addRoads: addRoadGeometry });
   res.json({ ...view, mode: isTest ? 'test' : 'live', fetchedAt, nextRefreshAt: nextFetchAt });
 });
 
@@ -88,6 +89,7 @@ app.post('/api/estimate', async (req, res) => {
     getRates: (query) => getRates(query, options),
     locatePostalCode: (postalCode) => locatePostalCode(postalCode, options),
     locateCity: (city, province) => locateCity(city, province, options),
+    addRoadGeometry,
   });
   res.json({ ...estimate, accountRates: usesAccountRates() });
 });

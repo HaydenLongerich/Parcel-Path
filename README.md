@@ -58,7 +58,7 @@ Retail rates don't include **Expedited Parcel**. To add it, and to see your own 
 
 ### How estimated routes work
 
-Canada Post publishes prices and transit times, but not which services fly. For each service, the app divides the road distance by its transit time. Above 800 km per business day a truck couldn't plausibly keep up, so that service is shown going by road to the nearest air hub, flying to the hub nearest the destination, then by road again. Air hubs are listed in `server/data/network.json`. Treat these routes as estimates.
+Canada Post publishes prices and transit times, but not which services fly. For each service, the app divides the road distance by its transit time. Above 800 km per business day a truck couldn't plausibly keep up, so that service is shown going by road to the nearest air hub's airport, flying to the airport nearest the destination, then by road again. Flights are drawn as great-circle paths, the shortest track over the Earth, which long-haul flights approximate. Canada Post doesn't publish flights, so the real aircraft and its exact track aren't known. Air hubs and airports are listed in `server/data/network.json`. Treat these routes as estimates.
 
 ## How the tracking data is fetched
 
@@ -152,10 +152,16 @@ The official table lets P0T–P0X and P7A–P9N use either Toronto or Winnipeg, 
 
 1. **Start:** the last scan with a location. A scan in a facility city starts at that facility. Any other scan joins at one of its three nearest nodes on the same landmass, so a Newfoundland scan can't cross the water by road.
 2. **Destination:** postal code → FSA → facility. For a city name, the facility in that city, or else the nearest one.
-3. **Path:** Dijkstra's shortest path, then a straight line to the destination town.
+3. **Path:** Dijkstra's shortest path, then by road to the destination town.
 4. **Stops remaining:** facilities ahead, plus one if the town is beyond its facility. Ferry terminals don't count.
 
-This is an estimate. Real routing varies: the demo parcel, for example, was never scanned in St. John's. Lines between points are straight, not actual roads.
+This is an estimate. Real routing varies: the demo parcel, for example, was never scanned in St. John's. Lines show the roads and ferry lanes that route would use, but the choice of route is still predicted.
+
+### Route lines
+
+Road and ferry paths for every network link are stored in `server/data/route-geometry.json`, so most of a route draws instantly and offline. Via points in `scripts/update-route-geometry.mjs` keep long-haul links on Canadian highways, because the fastest road between some cities goes through the United States. Run `npm run update:routes` after changing the network.
+
+Legs between a town and its nearest facility are looked up from the public [OSRM](https://project-osrm.org) server, at no more than one request per second, and cached in `server/.cache/roads.json`. Only town or Post Office coordinates are sent, never tracking numbers. If OSRM can't be reached, or a place has no road, that leg stays a straight line and its tooltip says so. Route data is © OpenStreetMap contributors, [ODbL](https://www.openstreetmap.org/copyright).
 
 Scan locations that aren't facilities are geocoded with [Nominatim](https://operations.osmfoundation.org/policies/nominatim/) at no more than one request per second, and results are cached in `server/.cache/geocode.json`.
 

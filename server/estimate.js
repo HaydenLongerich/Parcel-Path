@@ -61,8 +61,9 @@ export async function buildEstimate({ from, to, weightKg }, services) {
 
   const routeFrom = { lat: origin.lat, lon: origin.lon, region: origin.region, label: origin.label, facilityId: origin.facilityId };
   const routeTo = { lat: destination.lat, lon: destination.lon, label: destination.label, facilityIds: destination.facilityIds };
-  const ground = predictRoute({ from: routeFrom, destination: routeTo });
-  const air = predictAirRoute({ from: routeFrom, destination: routeTo });
+  const addRoads = services.addRoadGeometry ?? (async (route) => route);
+  const ground = await addRoads(predictRoute({ from: routeFrom, destination: routeTo }));
+  const air = await addRoads(predictAirRoute({ from: routeFrom, destination: routeTo }));
 
   return {
     from: { label: origin.label, postalCode: origin.postalCode, lat: origin.lat, lon: origin.lon },

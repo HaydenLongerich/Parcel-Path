@@ -13,6 +13,7 @@
     "start": "vite build && node server/index.js",
     "test": "vitest run",
     "update:facilities": "node scripts/update-facilities.mjs",
+    "update:routes": "node scripts/update-route-geometry.mjs",
     "check:api": "node scripts/check-canada-post.mjs"
   },
   "dependencies": {

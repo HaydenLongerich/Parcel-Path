@@ -57,8 +57,9 @@ describe('route prediction', () => {
 
   it('reaches Victoria by ferry from Vancouver', () => {
     const route = predictRoute({ from: fromFacility('cal'), destination: toFacility('vic') });
-    expect(ids(route)).toEqual(['van', 'vic']);
-    expect(route.segments.at(-1).mode).toBe('ferry');
+    expect(ids(route)).toEqual(['van', 'tsa', 'swb', 'vic']);
+    expect(route.segments.map((s) => s.mode)).toContain('ferry');
+    expect(route.segments.at(-1).mode).toBe('road');
   });
 
   it('adds a final leg and stop for a town beyond its facility', () => {

@@ -11,6 +11,7 @@ const DRAW_MS = 1800;
 
 const CARTO_KEY = import.meta.env.VITE_CARTO_KEY;
 const OSM_CREDIT = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+const ROUTING_CREDIT = 'Routes: <a href="https://project-osrm.org">OSRM</a>';
 const OPENFREEMAP_CREDIT = `<a href="https://openfreemap.org">OpenFreeMap</a> &copy; <a href="https://www.openmaptiles.org/">OpenMapTiles</a> ${OSM_CREDIT}`;
 
 const supportsWebGl = () => Boolean(document.createElement('canvas').getContext('webgl2'));
@@ -30,7 +31,7 @@ function createBasemap(theme) {
   if (supportsWebGl()) {
     return L.maplibreGL({
       style: `https://tiles.openfreemap.org/styles/${theme === 'dark' ? 'dark' : 'positron'}`,
-      attribution: OPENFREEMAP_CREDIT,
+      attribution: `${OPENFREEMAP_CREDIT} | ${ROUTING_CREDIT}`,
     });
   }
   return L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: OSM_CREDIT, className: 'tiles-restyled' });
@@ -68,13 +69,18 @@ function drawProgressively(paths, onDone) {
   const lengths = paths.map((path) => pathLength(path.coords));
   const total = lengths.reduce((a, b) => a + b, 0);
   const start = performance.now();
+  const complete = paths.map(() => false);
   let frame = 0;
   const step = (now) => {
     const t = Math.min(1, (now - start) / DRAW_MS);
     let remaining = t * t * (3 - 2 * t) * total;
     paths.forEach((path, i) => {
-      path.line.setLatLngs(truncatePath(path.coords, Math.max(0, Math.min(remaining, lengths[i]))));
+      const drawn = Math.max(0, Math.min(remaining, lengths[i]));
       remaining -= lengths[i];
+      if (complete[i]) return;
+      // Roads have thousands of points, so a finished line isn't redrawn every frame.
+      complete[i] = drawn >= lengths[i];
+      path.line.setLatLngs(complete[i] ? path.coords : truncatePath(path.coords, drawn));
     });
     if (t < 1) frame = requestAnimationFrame(step);
     else onDone();
@@ -152,8 +158,9 @@ export default function RouteMap({ view, selection, theme, onSelectPlace }) {
     layer.clearLayers();
     const paths = [];
 
-    if (view.travelled.length > 1) {
-      const coords = view.travelled.map(toLatLng);
+    const travelled = view.travelledPath ?? view.travelled;
+    if (travelled.length > 1) {
+      const coords = travelled.map(toLatLng);
       paths.push({ coords, line: L.polyline(coords, { color: colors.route, weight: 3.5, lineJoin: 'round', lineCap: 'round' }).addTo(layer) });
     }
 
@@ -167,11 +174,11 @@ export default function RouteMap({ view, selection, theme, onSelectPlace }) {
         dashArray: ferry ? '0.5 8' : air ? '16 9' : '8 8',
         lineCap: ferry ? 'round' : 'butt',
       }).addTo(layer);
-      line.bindTooltip(`Predicted: ${escapeHtml(segment.label ?? `${segment.from} → ${segment.to}`)}`, { sticky: true, className: 'glass-tooltip' });
+      line.bindTooltip(`Predicted: ${escapeHtml(segment.label ?? `${segment.from} → ${segment.to}`)}${segment.noRoadData ? ' (direct line, road path unavailable)' : ''}`, { sticky: true, className: 'glass-tooltip' });
       paths.push({ coords, line });
 
       if (ferry || air) {
-        const middle = [(coords[0][0] + coords[1][0]) / 2, (coords[0][1] + coords[1][1]) / 2];
+        const middle = truncatePath(coords, pathLength(coords) / 2).at(-1);
         L.marker(middle, {
           interactive: false,
           keyboard: false,
@@ -232,6 +239,8 @@ export default function RouteMap({ view, selection, theme, onSelectPlace }) {
     const points = [
       ...view.places.map(toLatLng),
       ...(view.predicted?.stops ?? []).map(toLatLng),
+      ...(view.travelledPath ?? []).map(toLatLng),
+      ...(view.predicted?.segments ?? []).flatMap((segment) => segment.coords.map(toLatLng)),
       ...(view.destinationPoint ? [toLatLng(view.destinationPoint)] : []),
     ];
     const padding = containerRef.current.clientWidth < 480 ? 22 : 48;

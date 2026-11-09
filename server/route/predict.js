@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { FACILITIES } from './facilities.js';
+import { greatCirclePath, storedPath } from './geometry.js';
 
 const NETWORK = JSON.parse(readFileSync(new URL('../data/network.json', import.meta.url), 'utf8'));
 
@@ -111,8 +112,19 @@ export function predictAirRoute({ from, destination, graph = buildGraph(), airHu
   const toHub = predictRoute({ from, destination: { ...toPoint(hubA), label: hubA.name, facilityIds: [originHub] }, graph });
   const fromHub = predictRoute({ from: { ...toPoint(hubB), region: hubB.province[0], label: hubB.name, facilityId: destHub }, destination, graph });
 
-  const airKm = Math.round(distanceKm(hubA, hubB));
-  const flight = { from: hubA.name, to: hubB.name, mode: 'air', label: `${hubA.name} → ${hubB.name} flight`, km: airKm, coords: [toPoint(hubA), toPoint(hubB)] };
+  const airportA = NETWORK.airports[originHub];
+  const airportB = NETWORK.airports[destHub];
+  const airKm = Math.round(distanceKm(airportA, airportB));
+  const toAirport = { from: hubA.name, to: airportA.name, mode: 'road', coords: storedPath(originHub, airportA.code) ?? [toPoint(hubA), toPoint(airportA)] };
+  const flight = {
+    from: airportA.name,
+    to: airportB.name,
+    mode: 'air',
+    label: `${airportA.code} → ${airportB.code} flight, ${hubA.name} to ${hubB.name}`,
+    km: airKm,
+    coords: greatCirclePath(toPoint(airportA), toPoint(airportB)),
+  };
+  const fromAirport = { from: airportB.name, to: hubB.name, mode: 'road', coords: storedPath(destHub, airportB.code) ?? [toPoint(airportB), toPoint(hubB)] };
   const hubStop = { id: hubB.id, name: hubB.name, lat: hubB.lat, lon: hubB.lon, type: 'facility' };
   const stops = [...(toHub?.stops ?? []), hubStop, ...(fromHub?.stops ?? [])];
   const townStop = fromHub ? fromHub.stopsRemaining - fromHub.stops.filter((stop) => stop.type === 'facility').length : 0;
@@ -121,7 +133,7 @@ export function predictAirRoute({ from, destination, graph = buildGraph(), airHu
     isEstimate: true,
     destinationFacilityId: targetId,
     distanceKm: (toHub?.distanceKm ?? 0) + airKm + (fromHub?.distanceKm ?? 0),
-    segments: [...(toHub?.segments ?? []), flight, ...(fromHub?.segments ?? [])],
+    segments: [...(toHub?.segments ?? []), toAirport, flight, fromAirport, ...(fromHub?.segments ?? [])],
     stops,
     stopsRemaining: stops.filter((stop) => stop.type === 'facility').length + townStop,
     usesFerry: Boolean(toHub?.usesFerry || fromHub?.usesFerry),
@@ -174,7 +186,7 @@ export function predictRoute({ from, destination, graph = buildGraph() }) {
       mode: hop.edge.mode ?? 'road',
       label: hop.edge.label ?? null,
       km: hop.edge.km,
-      coords: [toPoint(previous), toPoint(node)],
+      coords: storedPath(previous.id, node.id) ?? [toPoint(previous), toPoint(node)],
     });
     addStop(node);
     previous = node;
