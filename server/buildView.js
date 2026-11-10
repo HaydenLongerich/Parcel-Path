@@ -104,6 +104,16 @@ async function scanLeg(a, b, addRoads) {
   return (await addRoads(leg)).segments.flatMap((segment) => segment.coords);
 }
 
+/**
+ * A delay is active until a later scan shows the parcel moving again.
+ * Events are oldest first; a later scan at a real location means the delay is behind it.
+ */
+export function hasActiveDelay(events) {
+  const lastDelay = events.findLastIndex((event) => event.isDelay);
+  if (lastDelay === -1) return false;
+  return !events.slice(lastDelay + 1).some((event) => !event.isDelay && event.location);
+}
+
 export async function buildView(record, { geocode, destinationOverride = null, addRoads = async (route) => route }) {
   const places = new Map();
   const route = [];
@@ -190,7 +200,7 @@ export async function buildView(record, { geocode, destinationOverride = null, a
       expectedChangeReason: record.expectedChangeReason ?? null,
       onTime: record.onTime ?? null,
       stopsRemaining: record.delivered ? 0 : (predicted?.stopsRemaining ?? null),
-      hasDelay: events.some((event) => event.isDelay),
+      hasDelay: !record.delivered && hasActiveDelay(events),
     },
     stats: buildStats(record, route),
     pickup: record.pickup ?? null,

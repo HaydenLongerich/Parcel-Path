@@ -1,7 +1,9 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import { fetchHubs } from '../api.js';
 import { prefersReducedMotion } from '../motion.js';
+import { aerialPhotoUrl, googleMapsUrl, SATELLITE_TILES } from '../sitePhoto.js';
+import PhotoViewer from './PhotoViewer.jsx';
 import { BOAT_ICON_SVG, PLANE_ICON_SVG } from './Icons.jsx';
 
 const CANADA_BOUNDS = [[42, -141], [70, -52]];
@@ -16,30 +18,20 @@ const ESRI_TILES = 'https://server.arcgisonline.com/ArcGIS/rest/services';
 // Esri and OpenStreetMap both require this credit to stay visible on the map.
 const CREDIT = 'Esri, Vantor, Earthstar Geographics, GIS User Community | &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
 
-const PHOTO_RADIUS_METRES = 190;
-const PHOTO_ASPECT = 16 / 9;
-const EARTH_RADIUS = 6378137;
 const POPUP_OPTIONS = { className: 'glass-popup', minWidth: 280, maxWidth: 280 };
-
-/** An overhead picture centred on one building. */
-function aerialPhotoUrl({ lat, lon }) {
-  const x = (lon * Math.PI * EARTH_RADIUS) / 180;
-  const y = Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360)) * EARTH_RADIUS;
-  // Web Mercator stretches away from the equator, so the box widens to keep the same ground size.
-  const halfHeight = PHOTO_RADIUS_METRES / Math.cos((lat * Math.PI) / 180);
-  const halfWidth = halfHeight * PHOTO_ASPECT;
-  const bbox = [x - halfWidth, y - halfHeight, x + halfWidth, y + halfHeight].map((value) => value.toFixed(1)).join(',');
-  return `${ESRI_TILES}/World_Imagery/MapServer/export?bbox=${bbox}&bboxSR=3857&imageSR=3857&size=640,360&format=jpg&f=image`;
-}
 
 function sitePopup({ title, site, detail, lat, lon }) {
   const lines = [
-    `<img class="site-photo" src="${aerialPhotoUrl({ lat, lon })}" alt="Satellite picture of ${escapeHtml(title)}" width="280" height="158" />`,
+    `<button type="button" class="site-photo-button" data-lat="${lat}" data-lon="${lon}" data-title="${escapeHtml(title)}" data-address="${escapeHtml(site?.address ?? '')}" aria-label="Open a zoomable picture of ${escapeHtml(title)}">
+      <img class="site-photo" src="${aerialPhotoUrl({ lat, lon })}" alt="" width="280" height="158" />
+      <b class="site-photo-hint">Click to zoom</b>
+    </button>`,
     `<strong>${escapeHtml(title)}</strong>`,
     site?.name && site.name !== title && `<span>${escapeHtml(site.name)}</span>`,
     site?.address && `<span>${escapeHtml(site.address)}</span>`,
     detail && `<em>${escapeHtml(detail)}</em>`,
     site?.note && `<em>${escapeHtml(site.note)}</em>`,
+    `<a class="site-link" href="${googleMapsUrl({ lat, lon })}" target="_blank" rel="noopener noreferrer">View on Google Maps ↗</a>`,
     '<small>Satellite picture: Esri</small>',
   ];
   return lines.filter(Boolean).join('');
@@ -47,7 +39,7 @@ function sitePopup({ title, site, detail, lat, lon }) {
 
 function addSatelliteLayers(map) {
   const shared = { noWrap: true, bounds: WORLD_BOUNDS, maxZoom: MAX_ZOOM };
-  L.tileLayer(`${ESRI_TILES}/World_Imagery/MapServer/tile/{z}/{y}/{x}`, { ...shared, attribution: CREDIT }).addTo(map);
+  L.tileLayer(SATELLITE_TILES, { ...shared, attribution: CREDIT }).addTo(map);
   L.tileLayer(`${ESRI_TILES}/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}`, shared).addTo(map);
 }
 
@@ -145,6 +137,7 @@ export default function RouteMap({ view, selection, onSelectPlace }) {
   const drawnViewRef = useRef(null);
   const onSelectRef = useRef(onSelectPlace);
   onSelectRef.current = onSelectPlace;
+  const [photo, setPhoto] = useState(null);
 
   useEffect(() => {
     const map = L.map(containerRef.current, { scrollWheelZoom: false, maxBounds: WORLD_BOUNDS, maxBoundsViscosity: 1 });
@@ -154,6 +147,13 @@ export default function RouteMap({ view, selection, onSelectPlace }) {
     addSatelliteLayers(map);
     map.on('focus', () => map.scrollWheelZoom.enable());
     map.on('blur', () => map.scrollWheelZoom.disable());
+    // Popups are plain HTML, and Leaflet stops their clicks from reaching React.
+    map.on('popupopen', ({ popup }) => {
+      popup.getElement()?.querySelector('.site-photo-button')?.addEventListener('click', ({ currentTarget }) => {
+        const { lat, lon, title, address } = currentTarget.dataset;
+        setPhoto({ lat: Number(lat), lon: Number(lon), title, address });
+      });
+    });
     mapRef.current = map;
     // Below the route lines, so a hub never covers a scan.
     map.createPane('hubs').style.zIndex = 350;
@@ -293,5 +293,10 @@ export default function RouteMap({ view, selection, onSelectPlace }) {
     else map.flyTo(toLatLng(place), zoom, { duration: 0.9 });
   }, [selection, view]);
 
-  return <div ref={containerRef} className="map" role="application" aria-label="Map of the parcel's route" />;
+  return (
+    <>
+      <div ref={containerRef} className="map" role="application" aria-label="Map of the parcel's route" />
+      {photo && <PhotoViewer photo={photo} onClose={() => setPhoto(null)} />}
+    </>
+  );
 }

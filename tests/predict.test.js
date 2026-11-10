@@ -2,7 +2,17 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { FACILITIES } from '../server/route/facilities.js';
 import { buildGraph, landmassOf, nearestFacility, predictRoute } from '../server/route/predict.js';
-import { buildView, parseDestinationInput } from '../server/buildView.js';
+import { buildView, hasActiveDelay, parseDestinationInput } from '../server/buildView.js';
+
+describe('hasActiveDelay', () => {
+  const scan = (location) => ({ isDelay: false, location });
+  const delay = (location = null) => ({ isDelay: true, location });
+  it('is false with no delay', () => expect(hasActiveDelay([scan('A'), scan('B')])).toBe(false));
+  it('is true when the delay is the latest event', () => expect(hasActiveDelay([scan('A'), delay()])).toBe(true));
+  it('is false once a later scan shows movement', () => expect(hasActiveDelay([scan('A'), delay(), scan('B')])).toBe(false));
+  it('ignores later events with no location', () => expect(hasActiveDelay([scan('A'), delay(), scan(null)])).toBe(true));
+  it('uses the newest delay', () => expect(hasActiveDelay([delay(), scan('B'), delay('C')])).toBe(true));
+});
 
 const facility = (id) => FACILITIES.find((f) => f.id === id);
 const fromFacility = (id) => {
@@ -144,10 +154,18 @@ describe('full view from the demo fixture', () => {
     expect(stats.daysInTransit).toBe(8);
   });
 
-  it('flags delay notices', async () => {
+  it('flags delay notices in the timeline, but drops the summary flag once the parcel moves on', async () => {
     const view = await buildView(demo, { geocode });
-    expect(view.summary.hasDelay).toBe(true);
     expect(view.events.filter((e) => e.isDelay)).toHaveLength(1);
+    expect(view.summary.hasDelay).toBe(false);
+  });
+
+  it('keeps the summary delay flag while the delay is the latest news', async () => {
+    const delay = demo.events.find((e) => /delay/i.test(e.description));
+    const events = [...demo.events.filter((e) => e !== delay), { ...delay, date: '2099-01-01' }];
+    const view = await buildView({ ...demo, events }, { geocode });
+    expect(view.summary.hasDelay).toBe(true);
+    expect((await buildView({ ...demo, events, delivered: true }, { geocode })).summary.hasDelay).toBe(false);
   });
 
   it('keeps the national notice in the timeline but off the map', async () => {

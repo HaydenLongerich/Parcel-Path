@@ -170,7 +170,7 @@ Other points are as exact as the data allows:
 | Destination | The Post Office closest to it, because the delivery address isn't shared |
 | Ferry stop | The ferry terminal |
 
-Every point opens a popup with a satellite picture of that exact spot. Without an API key, town scans fall back to the town centre.
+Every point opens a popup with a satellite picture of that exact spot and a Google Maps link. Click the picture to open it in a viewer, where you can zoom with the wheel, buttons or a pinch and drag to look around. Without an API key, town scans fall back to the town centre.
 
 ### Route lines
 
