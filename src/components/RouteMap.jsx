@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import L from 'leaflet';
-import { prefersReducedMotion } from '../useTheme.js';
+import { fetchHubs } from '../api.js';
+import { prefersReducedMotion } from '../motion.js';
 import { BOAT_ICON_SVG, PLANE_ICON_SVG } from './Icons.jsx';
 
 const CANADA_BOUNDS = [[42, -141], [70, -52]];
@@ -12,10 +13,37 @@ const TILE_SIZE = 256;
 const MAX_ZOOM = 18;
 
 const ESRI_TILES = 'https://server.arcgisonline.com/ArcGIS/rest/services';
-const CREDIT = [
-  'Imagery: Esri, Vantor, Earthstar Geographics, and the GIS User Community',
-  'Routes: <a href="https://project-osrm.org">OSRM</a>, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-].join(' | ');
+// Esri and OpenStreetMap both require this credit to stay visible on the map.
+const CREDIT = 'Esri, Vantor, Earthstar Geographics, GIS User Community | &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+
+const PHOTO_RADIUS_METRES = 190;
+const PHOTO_ASPECT = 16 / 9;
+const EARTH_RADIUS = 6378137;
+const POPUP_OPTIONS = { className: 'glass-popup', minWidth: 280, maxWidth: 280 };
+
+/** An overhead picture centred on one building. */
+function aerialPhotoUrl({ lat, lon }) {
+  const x = (lon * Math.PI * EARTH_RADIUS) / 180;
+  const y = Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360)) * EARTH_RADIUS;
+  // Web Mercator stretches away from the equator, so the box widens to keep the same ground size.
+  const halfHeight = PHOTO_RADIUS_METRES / Math.cos((lat * Math.PI) / 180);
+  const halfWidth = halfHeight * PHOTO_ASPECT;
+  const bbox = [x - halfWidth, y - halfHeight, x + halfWidth, y + halfHeight].map((value) => value.toFixed(1)).join(',');
+  return `${ESRI_TILES}/World_Imagery/MapServer/export?bbox=${bbox}&bboxSR=3857&imageSR=3857&size=640,360&format=jpg&f=image`;
+}
+
+function sitePopup({ title, site, detail, lat, lon }) {
+  const lines = [
+    `<img class="site-photo" src="${aerialPhotoUrl({ lat, lon })}" alt="Satellite picture of ${escapeHtml(title)}" width="280" height="158" />`,
+    `<strong>${escapeHtml(title)}</strong>`,
+    site?.name && site.name !== title && `<span>${escapeHtml(site.name)}</span>`,
+    site?.address && `<span>${escapeHtml(site.address)}</span>`,
+    detail && `<em>${escapeHtml(detail)}</em>`,
+    site?.note && `<em>${escapeHtml(site.note)}</em>`,
+    '<small>Satellite picture: Esri</small>',
+  ];
+  return lines.filter(Boolean).join('');
+}
 
 function addSatelliteLayers(map) {
   const shared = { noWrap: true, bounds: WORLD_BOUNDS, maxZoom: MAX_ZOOM };
@@ -29,7 +57,7 @@ function limitZoomOut(map) {
   if (x > 0 && y > 0) map.setMinZoom(Math.ceil(Math.log2(Math.max(x, y) / TILE_SIZE)));
 }
 
-// Satellite imagery is dark in both themes, so the line colours don't change with the theme.
+// Bright enough to stand out against dark satellite imagery.
 const COLORS = { route: '#FF3B30', selected: '#FF8A80', predicted: '#E3EEFF', surface: '#14181F' };
 
 const escapeHtml = (text) =>
@@ -104,10 +132,9 @@ function placeMarker(place, selected) {
 }
 
 function popupHtml(place) {
-  if (place.note) return `<strong>${escapeHtml(place.label)}</strong><em>${escapeHtml(place.note)}</em>`;
   const count = place.eventIds.length;
-  const facility = place.facilityName ? `<span>${escapeHtml(place.facilityName)} facility</span>` : '';
-  return `<strong>${escapeHtml(place.label)}</strong>${facility}<em>${place.isCurrent ? 'Current location · ' : ''}${count} scan${count === 1 ? '' : 's'}</em>`;
+  const scans = `${place.isCurrent ? 'Current location · ' : ''}${count} scan${count === 1 ? '' : 's'}`;
+  return sitePopup({ title: place.label, site: place.site, detail: place.note ?? scans, lat: place.lat, lon: place.lon });
 }
 
 export default function RouteMap({ view, selection, onSelectPlace }) {
@@ -121,12 +148,30 @@ export default function RouteMap({ view, selection, onSelectPlace }) {
 
   useEffect(() => {
     const map = L.map(containerRef.current, { scrollWheelZoom: false, maxBounds: WORLD_BOUNDS, maxBoundsViscosity: 1 });
+    map.attributionControl.setPrefix(false);
     limitZoomOut(map);
     map.fitBounds(CANADA_BOUNDS, { animate: false });
     addSatelliteLayers(map);
     map.on('focus', () => map.scrollWheelZoom.enable());
     map.on('blur', () => map.scrollWheelZoom.disable());
     mapRef.current = map;
+    // Below the route lines, so a hub never covers a scan.
+    map.createPane('hubs').style.zIndex = 350;
+    fetchHubs()
+      .then((hubs) => {
+        if (mapRef.current !== map) return;
+        for (const hub of hubs) {
+          L.marker(toLatLng(hub), {
+            pane: 'hubs',
+            alt: `${hub.name}, Canada Post hub`,
+            title: hub.name,
+            icon: L.divIcon({ className: '', html: '<span class="hub-marker"></span>', iconSize: [18, 18], iconAnchor: [9, 9] }),
+          })
+            .bindPopup(sitePopup({ title: hub.name, site: { address: hub.address, note: hub.note }, detail: 'Canada Post hub', lat: hub.lat, lon: hub.lon }), POPUP_OPTIONS)
+            .addTo(map);
+        }
+      })
+      .catch(() => {}); // The tracker still works without the hub markers.
     routeLayerRef.current = L.layerGroup().addTo(map);
     markerLayerRef.current = L.layerGroup().addTo(map);
     const observer = new ResizeObserver(() => {
@@ -198,25 +243,27 @@ export default function RouteMap({ view, selection, onSelectPlace }) {
 
     for (const stop of view.predicted?.stops ?? []) {
       L.circleMarker(toLatLng(stop), {
-        radius: stop.type === 'facility' ? 5 : 3,
+        radius: stop.type === 'facility' ? 9 : 4,
         color: COLORS.predicted,
         weight: 2,
         fillColor: COLORS.surface,
-        fillOpacity: 1,
+        fillOpacity: stop.type === 'facility' ? 0 : 1, // Lets the hub marker show through the ring.
       })
         .bindTooltip(`${escapeHtml(stop.name)} (${stop.type === 'facility' ? 'predicted stop' : 'ferry terminal'})`, { className: 'glass-tooltip' })
+        .bindPopup(sitePopup({ title: stop.site?.name ?? stop.name, site: stop.site, detail: stop.type === 'facility' ? 'Predicted stop' : 'Ferry terminal', lat: stop.lat, lon: stop.lon }), POPUP_OPTIONS)
         .addTo(layer);
     }
 
     if (view.destinationPoint && view.predicted) {
       L.circleMarker(toLatLng(view.destinationPoint), { radius: 8, color: COLORS.predicted, weight: 2.5, fillColor: COLORS.surface, fillOpacity: 1 })
         .bindTooltip(`Destination: ${escapeHtml(view.destinationPoint.label)}`, { className: 'glass-tooltip' })
+        .bindPopup(sitePopup({ title: view.destinationPoint.label, site: view.destinationPoint.site, detail: 'Destination', lat: view.destinationPoint.lat, lon: view.destinationPoint.lon }), POPUP_OPTIONS)
         .addTo(layer);
     }
 
     for (const place of view.places) {
       const selected = selection?.placeId === place.id;
-      const marker = placeMarker(place, selected).bindPopup(popupHtml(place), { className: 'glass-popup' }).addTo(layer);
+      const marker = placeMarker(place, selected).bindPopup(popupHtml(place), POPUP_OPTIONS).addTo(layer);
       marker.on('click', () => onSelectRef.current(place.id));
       if (selected) marker.openPopup();
     }

@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { FACILITIES } from './facilities.js';
+import { FACILITIES, toSite } from './facilities.js';
 import { greatCirclePath, storedPath } from './geometry.js';
 
 const NETWORK = JSON.parse(readFileSync(new URL('../data/network.json', import.meta.url), 'utf8'));
@@ -7,6 +7,7 @@ const NETWORK = JSON.parse(readFileSync(new URL('../data/network.json', import.m
 const ROAD_FACTOR = 1.25; // Roads are longer than the straight line to a nearby hub.
 const ENTRY_NODES = 3; // A scan away from any facility may join at any of its nearest nodes.
 const SAME_PLACE_KM = 10;
+const AT_BUILDING_KM = 0.2;
 
 export function distanceKm(a, b) {
   const rad = (deg) => (deg * Math.PI) / 180;
@@ -125,7 +126,7 @@ export function predictAirRoute({ from, destination, graph = buildGraph(), airHu
     coords: greatCirclePath(toPoint(airportA), toPoint(airportB)),
   };
   const fromAirport = { from: airportB.name, to: hubB.name, mode: 'road', coords: storedPath(destHub, airportB.code) ?? [toPoint(airportB), toPoint(hubB)] };
-  const hubStop = { id: hubB.id, name: hubB.name, lat: hubB.lat, lon: hubB.lon, type: 'facility' };
+  const hubStop = { id: hubB.id, name: hubB.name, lat: hubB.lat, lon: hubB.lon, type: 'facility', site: toSite(hubB) };
   const stops = [...(toHub?.stops ?? []), hubStop, ...(fromHub?.stops ?? [])];
   const townStop = fromHub ? fromHub.stopsRemaining - fromHub.stops.filter((stop) => stop.type === 'facility').length : 0;
 
@@ -170,7 +171,7 @@ export function predictRoute({ from, destination, graph = buildGraph() }) {
   const segments = [];
   const stops = [];
   const addStop = (node) =>
-    stops.push({ id: node.id, name: node.name, lat: node.lat, lon: node.lon, type: node.isFacility ? 'facility' : 'waypoint' });
+    stops.push({ id: node.id, name: node.name, lat: node.lat, lon: node.lon, type: node.isFacility ? 'facility' : 'waypoint', site: node.isFacility ? toSite(node) : null });
 
   if (!from.facilityId) {
     segments.push({ from: from.label, to: entry.name, mode: 'road', coords: [toPoint(from), toPoint(entry)] });
@@ -192,8 +193,10 @@ export function predictRoute({ from, destination, graph = buildGraph() }) {
     previous = node;
   }
 
-  const finalLeg = distanceKm(previous, destination) > SAME_PLACE_KM;
-  if (finalLeg) {
+  // A short hop still reaches the destination's marker, but only a real one counts as a stop.
+  const finalKm = distanceKm(previous, destination);
+  const finalLeg = finalKm > SAME_PLACE_KM;
+  if (finalKm > AT_BUILDING_KM) {
     segments.push({ from: previous.name, to: destination.label, mode: 'road', coords: [toPoint(previous), toPoint(destination)] });
   }
 

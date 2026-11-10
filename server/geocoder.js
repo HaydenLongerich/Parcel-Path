@@ -9,9 +9,10 @@ const CACHE_PATH = fileURLToPath(new URL('./.cache/geocode.json', import.meta.ur
 const MIN_GAP_MS = 1100;
 const USER_AGENT = 'parcel-route-tracker/1.0 (self-hosted personal parcel map)';
 
+// The seed is checked by hand, so it wins over anything looked up earlier.
 const cache = {
-  ...JSON.parse(readFileSync(SEED_URL, 'utf8')),
   ...(existsSync(CACHE_PATH) ? JSON.parse(readFileSync(CACHE_PATH, 'utf8')) : {}),
+  ...JSON.parse(readFileSync(SEED_URL, 'utf8')),
 };
 
 function persist() {

@@ -6,15 +6,6 @@
     <meta name="description" content="Map every scan of a parcel and see an estimate of the road ahead." />
     <title>Parcel Path</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='9' fill='%23D52B1E'/><path d='M9 23c8 0 3-14 14-14' fill='none' stroke='white' stroke-width='2.5' stroke-linecap='round' stroke-dasharray='1 4.6'/><circle cx='9' cy='23' r='3' fill='white'/><circle cx='23' cy='9' r='3' fill='white'/></svg>" />
-    <script>
-      // Set the theme before first paint so dark mode doesn't flash.
-      (function () {
-        var saved = null;
-        try { saved = localStorage.getItem('parcel-path-theme'); } catch (e) {}
-        document.documentElement.dataset.theme =
-          saved || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-      })();
-    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -1,9 +1,14 @@
 // Turns a tracking record into everything the map, timeline and summary need.
-import { lookupFsa, matchFacilityByName } from './route/facilities.js';
+import { findOtherHub, lookupFsa, matchFacilityByName, toSite } from './route/facilities.js';
 import { distanceKm, nearestFacility, predictRoute } from './route/predict.js';
 
 const DAY_MS = 86_400_000;
 const NEARBY_TOWNS_KM = 300;
+
+const SCAN_OFFICE_NOTE = "Closest Post Office. Canada Post doesn't say which building made this scan.";
+const SCAN_TOWN_NOTE = "Town centre. Canada Post doesn't say which building made this scan.";
+const DESTINATION_OFFICE_NOTE = "Closest Post Office. Canada Post doesn't share the delivery address.";
+const DESTINATION_AREA_NOTE = "Centre of the destination area. Canada Post doesn't share the delivery address.";
 const dayNumber = (iso) => Math.floor(Date.parse(`${iso.slice(0, 10)}T00:00:00Z`) / DAY_MS);
 
 function buildStats(record, route) {
@@ -24,12 +29,18 @@ const isCanadian = (event) => (event.country ? event.country === 'CA' : Boolean(
 
 async function resolvePlace(event, geocode) {
   const inCanada = isCanadian(event);
+  const otherHub = inCanada ? findOtherHub(event) : null;
+  if (otherHub) {
+    return { lat: otherHub.lat, lon: otherHub.lon, kind: 'facility', facilityId: null, facilityName: otherHub.plant, inCanada, site: toSite(otherHub) };
+  }
   const facility = inCanada ? matchFacilityByName(event.city, event.region) : null;
   if (facility) {
-    return { lat: facility.lat, lon: facility.lon, kind: 'facility', facilityId: facility.id, facilityName: facility.name, inCanada };
+    return { lat: facility.lat, lon: facility.lon, kind: 'facility', facilityId: facility.id, facilityName: facility.name, inCanada, site: toSite(facility) };
   }
   const hit = await geocode(event);
-  return hit ? { lat: hit.lat, lon: hit.lon, kind: 'geocoded', facilityId: null, facilityName: null, inCanada } : null;
+  if (!hit) return null;
+  const site = hit.site ? { ...hit.site, note: SCAN_OFFICE_NOTE } : { name: null, address: null, note: SCAN_TOWN_NOTE };
+  return { lat: hit.lat, lon: hit.lon, kind: 'geocoded', facilityId: null, facilityName: null, inCanada, site };
 }
 
 /** Accepts "N9A 1A1", "N9A" or "Windsor, ON". */
@@ -51,11 +62,14 @@ async function resolveDestination(destination, geocode) {
 
   if (postalCode && !byFsa) return { label, unresolved: `No processing facility is listed for postal code ${postalCode}.` };
 
+  const point = await geocode({ city, region, postalCode, country: 'CA' });
+  const site = point?.site ? { ...point.site, note: DESTINATION_OFFICE_NOTE } : { name: null, address: null, note: DESTINATION_AREA_NOTE };
+
+  // The destination is a place in that city, not the sorting plant that serves it.
   if (byName && (!byFsa || byFsa.facilities.includes(byName))) {
-    return { label, lat: byName.lat, lon: byName.lon, facilityIds: [byName.id] };
+    return { label, lat: point?.lat ?? byName.lat, lon: point?.lon ?? byName.lon, facilityIds: [byName.id], site };
   }
 
-  const point = await geocode({ city, region, postalCode, country: 'CA' });
   if (byFsa) {
     const fallback = byFsa.facility;
     return {
@@ -63,11 +77,12 @@ async function resolveDestination(destination, geocode) {
       lat: point?.lat ?? fallback.lat,
       lon: point?.lon ?? fallback.lon,
       facilityIds: byFsa.facilities.map((f) => f.id),
+      site,
     };
   }
   if (!point) return { label, unresolved: `Could not find "${label}" on the map.` };
   const nearest = nearestFacility({ ...point, region });
-  return { label, lat: point.lat, lon: point.lon, facilityIds: [nearest.id] };
+  return { label, lat: point.lat, lon: point.lon, facilityIds: [nearest.id], site };
 }
 
 /** The line between two scans. It follows the network, except between nearby towns or outside Canada. */
@@ -183,7 +198,7 @@ export async function buildView(record, { geocode, destinationOverride = null, a
     places: mapped,
     travelled: route.map((place) => ({ lat: place.lat, lon: place.lon })),
     travelledPath,
-    destinationPoint: destination && !destination.unresolved ? { lat: destination.lat, lon: destination.lon, label: destination.label } : null,
+    destinationPoint: destination && !destination.unresolved ? { lat: destination.lat, lon: destination.lon, label: destination.label, site: destination.site ?? null } : null,
     predicted,
     routeNote,
   };

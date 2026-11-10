@@ -12,9 +12,14 @@
     "edm": { "code": "YEG", "name": "Edmonton Airport", "lat": 53.3097, "lon": -113.5797 },
     "van": { "code": "YVR", "name": "Vancouver Airport", "lat": 49.1947, "lon": -123.1792 }
   },
+  "otherHubs": [
+    { "id": "tby", "plant": "Thunder Bay Plant", "address": "1005 Alloy Dr, Thunder Bay, ON P7B 5X0", "lat": 48.4077, "lon": -89.2563, "fsa": "P7B", "scanNames": ["Thunder Bay"], "province": "ON" },
+    { "id": "tsc", "plant": "Toronto South Central", "address": "969 Eastern Ave, Toronto, ON M4L 1A5", "lat": 43.66206, "lon": -79.32201, "fsa": "M4L", "scanNames": [], "province": "ON" },
+    { "id": "ajk", "plant": "Albert Jackson Processing Centre", "address": "1395 Tapscott Rd, Toronto, ON", "lat": 43.8332, "lon": -79.2438, "fsa": "M1X", "scanNames": [], "province": "ON" }
+  ],
   "waypoints": [
-    { "id": "pab", "name": "Port aux Basques", "lat": 47.573, "lon": -59.136, "landmass": "newfoundland" },
-    { "id": "nsy", "name": "North Sydney", "lat": 46.2062, "lon": -60.253, "landmass": "mainland" },
+    { "id": "pab", "name": "Port aux Basques", "lat": 47.57933, "lon": -59.14125, "landmass": "newfoundland" },
+    { "id": "nsy", "name": "North Sydney", "lat": 46.20907, "lon": -60.24562, "landmass": "mainland" },
     { "id": "tsa", "name": "Tsawwassen", "lat": 49.0075, "lon": -123.1316, "landmass": "mainland" },
     { "id": "swb", "name": "Swartz Bay", "lat": 48.689, "lon": -123.4108, "landmass": "vancouver-island" }
   ],

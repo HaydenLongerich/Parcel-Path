@@ -12,6 +12,7 @@ import { getOutages } from './tracker/serviceInfo.js';
 import { createTrackingCache } from './trackingCache.js';
 import { buildView, parseDestinationInput } from './buildView.js';
 import { buildEstimate } from './estimate.js';
+import { HUBS } from './route/facilities.js';
 import { addRoadGeometry } from './route/roads.js';
 import { geocode as nominatimGeocode } from './geocoder.js';
 
@@ -39,15 +40,18 @@ const STATUS_BY_CODE = {
 /** Post Office data places postal codes better than free geocoding does, so it goes first. */
 async function geocode(query) {
   const config = readApiConfig();
-  const postalCode = query.city ? null : fullPostalCode(query.postalCode);
-  if (postalCode && config) {
-    const found = await locatePostalCode(postalCode, { config }).catch(() => null);
-    if (found) return { lat: found.lat, lon: found.lon, label: found.label, place: found.label };
+  const inCanada = (query.country ?? 'CA') === 'CA';
+  if (config && inCanada) {
+    // A complete postal code beats the town name; a three-character one only helps without a town.
+    const postalCode = /^[a-z]\d[a-z]\s*\d[a-z]\d$/i.test(query.postalCode ?? '') || !query.city ? fullPostalCode(query.postalCode) : null;
+    const byPostal = postalCode ? await locatePostalCode(postalCode, { config }).catch(() => null) : null;
+    const found = byPostal ?? (query.city && query.region ? await locateCity(query.city, query.region, { config }).catch(() => null) : null);
+    if (found) return { lat: found.lat, lon: found.lon, label: found.label, site: found.site, ...(query.city ? {} : { place: found.label }) };
   }
   return nominatimGeocode(query);
 }
 
-const demoView = async () => ({ ...(await buildView(demoRecord, { geocode, addRoads: addRoadGeometry })), mode: 'demo', fetchedAt: null, nextRefreshAt: null });
+const demoView = async () => ({ ...(await buildView(demoRecord, { geocode: nominatimGeocode, addRoads: addRoadGeometry })), mode: 'demo', fetchedAt: null, nextRefreshAt: null });
 
 function requirePin(raw) {
   const pin = sanitizePin(raw);
@@ -59,6 +63,8 @@ function requirePin(raw) {
 
 const app = express();
 app.use(express.json({ limit: '10kb' }));
+
+app.get('/api/hubs', (_req, res) => res.json(HUBS));
 
 app.get('/api/demo', async (_req, res) => res.json(await demoView()));
 

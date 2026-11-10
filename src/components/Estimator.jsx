@@ -42,10 +42,10 @@ export default function Estimator() {
   const mapView = useMemo(() => {
     if (!result) return null;
     return {
-      places: [{ id: 'origin', label: result.from.label, lat: result.from.lat, lon: result.from.lon, eventIds: [], note: 'Starting point' }],
+      places: [{ id: 'origin', label: result.from.label, lat: result.from.lat, lon: result.from.lon, site: result.from.site, eventIds: [], note: 'Starting point' }],
       travelled: [],
       predicted: route,
-      destinationPoint: { lat: result.to.lat, lon: result.to.lon, label: result.to.label },
+      destinationPoint: { lat: result.to.lat, lon: result.to.lon, label: result.to.label, site: result.to.site },
     };
   }, [result, route]);
 
@@ -109,6 +109,7 @@ export default function Estimator() {
                   <li><span className="swatch swatch-dashed" />Road</li>
                   {route?.usesAir && <li><span className="swatch swatch-air" />Flight</li>}
                   {route?.usesFerry && <li><span className="swatch swatch-dotted" />Ferry</li>}
+                  <li><span className="swatch swatch-hub" />Canada Post hub</li>
                 </ul>
                 {route ? (
                   <p className="estimate">

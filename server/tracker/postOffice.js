@@ -59,7 +59,12 @@ function toLocation(office) {
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
   const city = titleCase(clean(office.address.city));
   const province = clean(office.address.province);
-  return { lat, lon, city, province, postalCode: clean(office.address.postalCode)?.replace(/\s/g, ''), label: [city, province].filter(Boolean).join(', ') };
+  const street = titleCase(clean(office.address.officeAddress));
+  const site = {
+    name: titleCase(clean(office.location ?? office.name)).replace(/\bPo$/, 'Post Office'),
+    address: [street, city, province].filter(Boolean).join(', '),
+  };
+  return { lat, lon, city, province, postalCode: clean(office.address.postalCode)?.replace(/\s/g, ''), label: [city, province].filter(Boolean).join(', '), site };
 }
 
 const normalizeName = (text) => (text ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
@@ -76,13 +81,16 @@ export function locatePostalCode(postalCode, options) {
 
 /**
  * Finds a town and a usable postal code for it. Canada Post can list a neighbouring
- * town's office first, so this prefers one that's actually in the town asked for.
+ * town's office first, or a rural one with a town mailing address, so this prefers
+ * the town's own station.
  */
 export function locateCity(city, province, options) {
   return remembered(`city:${city}|${province}`.toLowerCase(), async () => {
     const offices = await findOffices({ city, province }, 10, options);
     const wanted = normalizeName(city);
-    const location = toLocation(offices.find((office) => normalizeName(office.address?.city) === wanted) ?? offices[0]);
+    const inTown = offices.filter((office) => normalizeName(office.address?.city) === wanted);
+    const isStation = (office) => /\b(stn|main)\b/i.test(office.name ?? '') || normalizeName(office.location) === `${wanted} po`;
+    const location = toLocation(inTown.find(isStation) ?? inTown[0] ?? offices[0]);
     if (!location) return null;
     const name = titleCase(city.toUpperCase());
     return { ...location, city: name, label: `${name}, ${province}` };

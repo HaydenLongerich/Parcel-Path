@@ -3,6 +3,13 @@ import { readFileSync } from 'node:fs';
 const loadJson = (path) => JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8'));
 
 export const FACILITIES = loadJson('../data/facilities.json').facilities;
+const OTHER_HUBS = loadJson('../data/network.json').otherHubs;
+
+/** What a map popup says about a Canada Post building. */
+export const toSite = (hub) => ({ name: hub.plant, address: hub.address, note: hub.addressNote ?? null });
+
+/** Every major Canada Post plant, for highlighting on the map. */
+export const HUBS = [...FACILITIES, ...OTHER_HUBS].map((hub) => ({ id: hub.id, lat: hub.lat, lon: hub.lon, ...toSite(hub) }));
 
 const normalize = (text) =>
   (text ?? '')
@@ -55,6 +62,13 @@ export function lookupFsa(postalCode, facilities = FACILITIES) {
     tier: matches[0].tier,
     facilities: matches.map((m) => m.facility),
   };
+}
+
+/** Finds a plant outside the routing network from a scan's postal area or city. Toronto has three plants, so only the postal area can tell them apart. */
+export function findOtherHub({ city, region, postalCode }) {
+  const fsa = toFsa(postalCode);
+  const wanted = normalize(city);
+  return OTHER_HUBS.find((hub) => hub.fsa === fsa || (wanted && hub.province === region && hub.scanNames.some((name) => normalize(name) === wanted))) ?? null;
 }
 
 /** Matches a scan's city and province to a facility, e.g. "Dieppe, NB" → Moncton. */

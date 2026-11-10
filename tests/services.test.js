@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { TrackingError } from '../server/tracker/common.js';
 import { addBusinessDays, businessDaysBetween, enrichRecord } from '../server/tracker/enrich.js';
-import { locatePostalCode, parsePostOffice } from '../server/tracker/postOffice.js';
+import { locateCity, locatePostalCode, parsePostOffice } from '../server/tracker/postOffice.js';
 import { parseRates } from '../server/tracker/rating.js';
 import { parseOutages } from '../server/tracker/serviceInfo.js';
 import { buildEstimate, chooseRouteKind } from '../server/estimate.js';
-import { FACILITIES } from '../server/route/facilities.js';
+import { FACILITIES, findOtherHub, HUBS } from '../server/route/facilities.js';
+import { buildView } from '../server/buildView.js';
 import { distanceKm, predictAirRoute, predictRoute } from '../server/route/predict.js';
 import { greatCirclePath, simplify, storedPath } from '../server/route/geometry.js';
 import { createRoadRouter } from '../server/route/roads.js';
@@ -69,6 +70,28 @@ describe('Post Office lookups', () => {
     const repeat = locatePostalCode('N9A6S1', options);
     expect(repeat).toBeInstanceOf(Promise);
     await expect(repeat).resolves.toMatchObject({ city: 'Windsor', province: 'ON', label: 'Windsor, ON' });
+  });
+});
+
+describe('choosing a town\'s Post Office', () => {
+  const entry = (name, location, city) => ({ ...OFFICE, name, location, address: { ...OFFICE.address, city } });
+  const lookup = (offices) => ({
+    config: { apiKey: 'a', apiSecret: 'b' },
+    limiter: async () => {},
+    tokens: {},
+    fetchImpl: async (url) => new Response(url.includes('/oauth2/token') ? JSON.stringify({ access_token: 't', expires_in: 3600 }) : JSON.stringify(offices)),
+  });
+
+  it('prefers the town station over a rural office with the same mailing town', async () => {
+    const offices = [entry('ROSSMORE PO', 'ROSSMORE PO', 'BELLEVILLE'), entry('BELLEVILLE STN MAIN', 'BELLEVILLE MAIN PO', 'BELLEVILLE')];
+    const found = await locateCity('Belleville', 'ON', lookup(offices));
+    expect(found.site.name).toBe('Belleville Main Post Office');
+  });
+
+  it('uses the first office in town when there is no station', async () => {
+    const offices = [entry('X', 'NEARBY PO', 'OTHERTOWN'), entry('SHOPPERS', 'CORNER PO', 'SOMEWHERE')];
+    const found = await locateCity('Somewhere', 'ON', lookup(offices));
+    expect(found.site.name).toBe('Corner Post Office');
   });
 });
 
@@ -267,6 +290,65 @@ describe('road lookups', () => {
     clock = 120_000;
     working = true;
     await expect(roadBetween(a, b)).resolves.not.toBeNull();
+  });
+});
+
+describe('exact locations', () => {
+  it('gives every hub a street address and a building, not a city centre', () => {
+    expect(HUBS).toHaveLength(24);
+    for (const hub of HUBS) {
+      expect(hub.address).toMatch(/\d.*, [A-Z]{2}/);
+      expect(Number.isFinite(hub.lat) && Number.isFinite(hub.lon)).toBe(true);
+    }
+    expect(HUBS.find((hub) => hub.id === 'mtl')).toMatchObject({ name: 'Léo Blanchette Plant', lat: 45.48731 });
+  });
+
+  it('says so when a facility has no published address', () => {
+    expect(HUBS.find((hub) => hub.id === 'fre').note).toMatch(/main Post Office/);
+    expect(HUBS.find((hub) => hub.id === 'mtl').note).toBeNull();
+  });
+
+  it('tells the Toronto plants apart by postal area', () => {
+    expect(findOtherHub({ city: 'Toronto', region: 'ON', postalCode: 'M1X 0A5' }).id).toBe('ajk');
+    expect(findOtherHub({ city: 'Toronto', region: 'ON', postalCode: 'M4L 1A5' }).id).toBe('tsc');
+    expect(findOtherHub({ city: 'Toronto', region: 'ON', postalCode: 'M5V 2T6' })).toBeNull();
+    expect(findOtherHub({ city: 'Thunder Bay', region: 'ON', postalCode: null }).id).toBe('tby');
+  });
+
+  const record = (events, destination = { city: null, region: null, postalCode: 'N9A 6S1' }) => ({ pin: 'x', status: 'In transit', delivered: false, destination, events });
+  const scan = (city, region, postalCode = null) => ({ date: '2026-11-09', time: null, description: 'Item processed', city, region, postalCode, country: 'CA' });
+  const office = { lat: 44.16, lon: -77.38, label: 'Belleville, ON', site: { name: 'Belleville PO', address: '1 Front St, Belleville, ON' } };
+
+  it('puts a plant scan on the plant', async () => {
+    const view = await buildView(record([scan('Montréal', 'QC', 'H4T 1T4')]), { geocode: async () => null });
+    expect(view.places[0]).toMatchObject({ lat: 45.48731, site: { name: 'Léo Blanchette Plant', address: expect.stringContaining('555 McArthur') } });
+  });
+
+  it('puts a town scan on its Post Office and says it is not certain', async () => {
+    const view = await buildView(record([scan('Belleville', 'ON')]), { geocode: async () => office });
+    expect(view.places[0]).toMatchObject({ lat: 44.16, site: { name: 'Belleville PO', note: expect.stringContaining('Closest Post Office') } });
+  });
+
+  it('says a scan is only at the town centre when no office is known', async () => {
+    const view = await buildView(record([scan('Belleville', 'ON')]), { geocode: async () => ({ lat: 44.16, lon: -77.38 }) });
+    expect(view.places[0].site.note).toMatch(/Town centre/);
+  });
+
+  it('keeps a destination city at its Post Office, not the sorting plant', async () => {
+    const destination = { city: 'Windsor', region: 'ON', postalCode: null };
+    const view = await buildView(record([scan('Montréal', 'QC')], destination), { geocode: async () => ({ lat: 42.31, lon: -83.04, site: { name: 'Windsor PO', address: 'x' } }) });
+    expect(view.destinationPoint).toMatchObject({ lat: 42.31, site: { name: 'Windsor PO' } });
+    expect(view.predicted.segments.at(-1).to).toBe('Windsor, ON');
+    expect(view.predicted.stopsRemaining).toBe(2); // A short last hop doesn't count as a stop.
+  });
+
+  it('carries the building details on predicted stops', () => {
+    const facility = (id) => FACILITIES.find((f) => f.id === id);
+    const route = predictRoute({
+      from: { lat: facility('mtl').lat, lon: facility('mtl').lon, region: 'QC', label: 'Montréal', facilityId: 'mtl' },
+      destination: { lat: facility('win').lat, lon: facility('win').lon, label: 'Windsor', facilityIds: ['win'] },
+    });
+    expect(route.stops[0].site.address).toContain('4567 Dixie');
   });
 });
 

@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError, fetchDemo, fetchNotices, fetchTracking } from './api.js';
 import { formatClock } from './format.js';
-import { prefersReducedMotion, useTheme } from './useTheme.js';
+import { prefersReducedMotion } from './motion.js';
 import CommandBar from './components/CommandBar.jsx';
 import Estimator from './components/Estimator.jsx';
 import Faq from './components/Faq.jsx';
-import { AppIcon, MoonIcon, SunIcon } from './components/Icons.jsx';
+import { AppIcon } from './components/Icons.jsx';
 import PickupCard from './components/PickupCard.jsx';
 import Reveal from './components/Reveal.jsx';
 import RouteMap from './components/RouteMap.jsx';
@@ -42,7 +42,6 @@ const scrollToTracker = () =>
 
 export default function App() {
   const initial = useRef(readUrl()).current;
-  const [theme, toggleTheme] = useTheme();
   const [query, setQuery] = useState(initial);
   const [view, setView] = useState(null);
   const [error, setError] = useState(null);
@@ -126,14 +125,6 @@ export default function App() {
           <a href={view || error || loading ? '#tracker' : '#top'}>Tracker</a>
           <a href="#estimate">Estimate</a>
           <a href="#faq" className="nav-wide">FAQ</a>
-          <button
-            type="button"
-            className="icon-button"
-            onClick={toggleTheme}
-            aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-          >
-            {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
-          </button>
         </nav>
       </header>
 
@@ -210,7 +201,7 @@ export default function App() {
 
       <footer className="footer">
         <span>Parcel Path is an independent project, not affiliated with Canada Post.</span>
-        <span><a href="#test">Test bench</a> · Imagery by Esri · Route data © OpenStreetMap contributors · Geocoding by Nominatim</span>
+        <span><a href="#test">Test bench</a> · Imagery by Esri · Routing by OSRM · Route data © OpenStreetMap contributors · Geocoding by Nominatim</span>
       </footer>
     </>
   );
@@ -224,6 +215,7 @@ function MapKey({ view }) {
         {view.predicted && <li><span className="swatch swatch-dashed" />Predicted route</li>}
         {view.predicted?.usesFerry && <li><span className="swatch swatch-dotted" />Ferry</li>}
         <li><span className="swatch swatch-current" />Current location</li>
+        <li><span className="swatch swatch-hub" />Canada Post hub</li>
       </ul>
       {view.predicted && (
         <p className="estimate">

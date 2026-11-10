@@ -48,6 +48,7 @@ async function resolveLocation(text, role, { locatePostalCode, locateCity }) {
     region: province,
     facilityId: facility?.id ?? null,
     facilityIds: lookup.facilities.map((f) => f.id),
+    site: found?.site ? { ...found.site, note: 'Closest Post Office.' } : null,
   };
 }
 
@@ -66,8 +67,8 @@ export async function buildEstimate({ from, to, weightKg }, services) {
   const air = await addRoads(predictAirRoute({ from: routeFrom, destination: routeTo }));
 
   return {
-    from: { label: origin.label, postalCode: origin.postalCode, lat: origin.lat, lon: origin.lon },
-    to: { label: destination.label, postalCode: destination.postalCode, lat: destination.lat, lon: destination.lon },
+    from: { label: origin.label, postalCode: origin.postalCode, lat: origin.lat, lon: origin.lon, site: origin.site },
+    to: { label: destination.label, postalCode: destination.postalCode, lat: destination.lat, lon: destination.lon, site: destination.site },
     weightKg: weight,
     routes: { ground, air },
     services: quotes.map((quote) => ({

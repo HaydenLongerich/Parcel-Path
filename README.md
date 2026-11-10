@@ -1,6 +1,6 @@
 # Parcel Path
 
-Enter a Canada Post tracking number and see where the parcel has been scanned, where it probably goes next, and a clickable timeline of its scans. You can also price a shipment and compare the likely route for each service. Works in light and dark mode.
+Enter a Canada Post tracking number and see where the parcel has been scanned, where it probably goes next, and a clickable timeline of its scans. You can also price a shipment and compare the likely route for each service.
 
 This is an independent project, not affiliated with Canada Post. Use it for personal, low-volume lookups.
 
@@ -156,6 +156,21 @@ The official table lets P0T–P0X and P7A–P9N use either Toronto or Winnipeg, 
 4. **Stops remaining:** facilities ahead, plus one if the town is beyond its facility. Ferry terminals don't count.
 
 This is an estimate. Real routing varies: the demo parcel, for example, was never scanned in St. John's. Lines show the roads and ferry lanes that route would use, but the choice of route is still predicted.
+
+### Hubs and exact locations
+
+The amber squares are Canada Post's major plants. Their addresses come from Canada Post's [induction locations](https://www.canadapost-postescanada.ca/cpc/en/support/articles/direct-marketing-and-transaction-mail-depositing-information/induction-locations-and-cut-off-times.page), and each marker was placed on the building and checked against satellite imagery. Canada Post doesn't publish a plant address for Charlottetown or Fredericton, so those mark the main Post Office, and their popups say so.
+
+Other points are as exact as the data allows:
+
+| Point | Where it goes |
+| --- | --- |
+| Scan at a plant | The plant building |
+| Scan in any other town | That town's Post Office, because Canada Post doesn't say which building made the scan |
+| Destination | The Post Office closest to it, because the delivery address isn't shared |
+| Ferry stop | The ferry terminal |
+
+Every point opens a popup with a satellite picture of that exact spot. Without an API key, town scans fall back to the town centre.
 
 ### Route lines
 

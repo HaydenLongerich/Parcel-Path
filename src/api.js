@@ -25,6 +25,16 @@ const postJson = (path, data) =>
   request(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
 
 export const fetchDemo = () => request('/api/demo');
+
+let hubsRequest = null;
+export function fetchHubs() {
+  hubsRequest ??= request('/api/hubs').catch((failure) => {
+    hubsRequest = null;
+    throw failure;
+  });
+  return hubsRequest;
+}
+
 export const fetchNotices = () => request('/api/notices');
 export const fetchBenchInfo = () => request('/api/test-bench/info');
 export const fetchRandomNumbers = () => request('/api/test-bench/random');
